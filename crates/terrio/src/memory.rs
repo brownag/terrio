@@ -625,12 +625,10 @@ pub(crate) mod codec {
 
     /// Keeps the layers the options ask for.
     pub(super) fn finish_vector(layers: Vec<Layer>, name: &str, driver: VectorDriver, options: &VectorOpenOptions) -> Result<Dataset> {
-        let names: Vec<String> = layers.iter().map(|l| l.name.clone()).collect();
         let layers = crate::dataset::select_layers(layers, name, options)?;
-        // A source without layers is refused, as before names were checked one by one.
+        // A source without layers has nothing to select, so it is refused as an empty input.
         if layers.is_empty() {
-            let available: Vec<&str> = names.iter().map(String::as_str).collect();
-            return Err(crate::ops::vector_filter::no_layer_named(&options.layers.join(", "), &available));
+            return Err(Error::InvalidArgument("no input layer".into()));
         }
         Ok(Dataset::Vector(VectorDataset::new(layers, driver)))
     }
@@ -838,7 +836,7 @@ mod tests {
     #[test]
     fn a_source_without_layers_is_refused_in_memory() {
         let error = codec::finish_vector(Vec::new(), "empty.geojson", VectorDriver::GeoJSON, &VectorOpenOptions::default()).unwrap_err();
-        assert!(error.to_string().starts_with("no layer named"), "{error}");
+        assert!(error.to_string().contains("no input layer"), "{error}");
     }
 
     /// A Zarr store opened from its files is a Zarr open, as GDAL's de-registered driver opens no
