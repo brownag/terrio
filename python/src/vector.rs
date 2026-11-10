@@ -25,6 +25,11 @@ impl From<Layer> for PyLayer {
 }
 
 impl PyLayer {
+    /// The layer's name, as the dataset lookups compare it.
+    pub(crate) fn layer_name(&self) -> &str {
+        &self.inner.name
+    }
+
     /// The layer with each `@id` style reference replaced by its definition: borrowed when the
     /// dataset it came from has no style table.
     pub(crate) fn resolved(&self) -> std::borrow::Cow<'_, Layer> {
@@ -87,7 +92,7 @@ impl PyVectorDataset {
 
     /// Borrow one selected layer while a read-only binding operation runs.
     pub(crate) fn with_layer<T>(&self, py: Python<'_>, name: Option<&str>, apply: impl FnOnce(&Layer) -> PyResult<T>) -> PyResult<T> {
-        let names: Vec<String> = self.layers.iter().map(|layer| layer.borrow(py).inner.name.clone()).collect();
+        let names: Vec<String> = self.layers.iter().map(|layer| layer.borrow(py).layer_name().to_owned()).collect();
         let index = terrio::ops::vector_filter::one_layer_index(&names, name).py()?;
         let borrowed = self.layers[index].borrow(py);
         apply(&borrowed.inner)

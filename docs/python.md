@@ -505,7 +505,7 @@ working types, nodata, bit depth and extent handling.
 ```python
 visible = terrio.viewshed("dem_utm.tif", 500000, 4400000, oz=2, tz=0, md=5000)
 height = terrio.viewshed("dem_utm.tif", 500000, 4400000, om="GROUND", cc=0)
-cumulative = terrio.viewshed("dem_utm.tif", 0, 0, om="ACCUM", os=10)
+cumulative = terrio.viewshed("dem_utm.tif", om="ACCUM", os=10)
 ```
 
 `om="NORMAL"` returns visibility; `DEM` and `GROUND` return minimum visible elevation

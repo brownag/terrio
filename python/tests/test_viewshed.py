@@ -80,7 +80,7 @@ def test_accum_needs_no_observer_coordinates():
     )
     omitted = terrio.viewshed(src, om="ACCUM", os=2, cc=0)
     np.testing.assert_array_equal(omitted.read(1), [[170, 170, 255, 170, 170]])
-    with pytest.raises(ValueError, match="ox and oy|--ox and --oy"):
+    with pytest.raises(ValueError, match="observer coordinates are required"):
         terrio.viewshed(src, om="NORMAL", cc=0)
 
 

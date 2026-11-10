@@ -102,7 +102,7 @@ impl ViewshedOptions {
                 self.observer_y = y;
             }
             None if self.mode.requires_observer() => {
-                return Err(Error::InvalidArgument("--ox and --oy are required except in ACCUM mode".into()));
+                return Err(Error::InvalidArgument("observer coordinates are required except in ACCUM mode".into()));
             }
             None => {
                 self.observer_x = 0.0;
@@ -448,7 +448,7 @@ mod tests {
     fn checked_requires_observer_outside_accum() {
         let normal = ViewshedOptions::default();
         let err = normal.clone().checked(None).unwrap_err();
-        assert!(err.to_string().contains("--ox and --oy are required except in ACCUM mode"), "{err}");
+        assert!(err.to_string().contains("observer coordinates are required except in ACCUM mode"), "{err}");
         let set = normal.checked(Some((3.5, -2.0))).unwrap();
         assert_eq!((set.observer_x, set.observer_y), (3.5, -2.0));
         assert!(ViewshedOptions { mode: ViewshedMode::Dem, ..Default::default() }.checked(None).is_err());
@@ -463,5 +463,34 @@ mod tests {
         assert_eq!((given.observer_x, given.observer_y), (4.0, 5.0));
         assert!(!ViewshedMode::Cumulative.requires_observer());
         assert!(ViewshedMode::Normal.requires_observer());
+    }
+
+    /// The Python binding writes its viewshed defaults as literals in a pyo3 signature, because
+    /// pyo3 renders const defaults as `...`. This test reads that signature and fails when a
+    /// literal drifts from the core constant.
+    #[test]
+    fn python_viewshed_signature_defaults_match_core() {
+        let binding = include_str!("../../../../python/src/terrain.rs");
+        let start = binding
+            .find("#[pyo3(signature = (src, ox=None, oy=None, dst=None, *, oz=")
+            .expect("viewshed signature in python/src/terrain.rs");
+        let end = start + binding[start..].find("))]").expect("end of viewshed signature");
+        let signature = &binding[start..end];
+        let literal = |name: &str| -> f64 {
+            let key = format!("{name}=");
+            let at = signature.find(&key).unwrap_or_else(|| panic!("no default for {name}"));
+            signature[at + key.len()..]
+                .split(|c: char| c == ',' || c == ')' || c.is_whitespace())
+                .next()
+                .unwrap()
+                .parse()
+                .unwrap_or_else(|_| panic!("default for {name} is not a number"))
+        };
+        assert_eq!(literal("oz"), DEFAULT_OBSERVER_HEIGHT);
+        assert_eq!(literal("tz"), DEFAULT_TARGET_HEIGHT);
+        assert_eq!(literal("md"), DEFAULT_MAX_DISTANCE);
+        assert_eq!(literal("ov"), f64::from(DEFAULT_OUT_OF_RANGE));
+        assert_eq!(literal("band"), DEFAULT_BAND as f64);
+        assert_eq!(literal("os"), DEFAULT_OBSERVER_SPACING as f64);
     }
 }
