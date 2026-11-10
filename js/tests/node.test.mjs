@@ -4336,7 +4336,6 @@ test("ZonalReducer and ZonalStream reject bad input", () => {
   assert.throws(() => new terrio.ZonalReducer(a, 300, 200, transform, undefined), /both declare a CRS/);
 });
 
-
 test("vsi: listUrl refuses invalid depth before fetching", async () => {
   for (const depth of ["2", Infinity, NaN, -1, 0.5]) {
     let fetched = false;
@@ -4346,4 +4345,15 @@ test("vsi: listUrl refuses invalid depth before fetching", async () => {
     }), /depth must be a non-negative integer/);
     assert.equal(fetched, false);
   }
+});
+
+test("cross-surface options: ACCUM ignores observer coordinates, clipVector keeps every selected layer", () => {
+  const dem = terrio.rasterFromArray(new Float64Array([0, 0, 10, 0, 0]), 5, 1, [0, 10, 0, 10, 0, -10], "EPSG:32611");
+  const omitted = terrio.viewshed(dem, undefined, undefined, { om: "ACCUM", os: 2, cc: 0 });
+  const zeros = terrio.viewshed(dem, 0, 0, { om: "ACCUM", os: 2, cc: 0 });
+  assert.deepEqual([...omitted.readBand(1)], [...zeros.readBand(1)]);
+  const square = { type: "FeatureCollection", features: [{ type: "Feature", properties: {}, geometry: { type: "Polygon", coordinates: [[[0, 0], [2, 0], [2, 2], [0, 2], [0, 0]]] } }] };
+  const two = terrio.concat([terrio.fromGeoJSON(square, "roads"), terrio.fromGeoJSON(square, "parcels")], { mode: "stack" });
+  const clipped = terrio.clipVector(two, { bbox: [0, 0, 1, 1] });
+  assert.equal(clipped.layerNames().length, 2);
 });

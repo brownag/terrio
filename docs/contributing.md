@@ -305,3 +305,20 @@ The site is built with [Zensical](https://zensical.org):
 pip install zensical
 zensical serve
 ```
+
+## Operation options
+
+When an operation takes options, keep the rules in one place so the CLI, Python and JavaScript
+cannot drift:
+
+- Defaults are `pub const` values in the core module (for example `DEFAULT_OBSERVER_HEIGHT` in
+  `ops::viewshed`), and the options type's `Default` uses them.
+- Validation that depends on several options lives in core, as a `checked` or `region`-style
+  method (for example `ViewshedOptions::checked` and `ClipSpec::region`). Bindings call it and do
+  not repeat the rule.
+- Layer selection goes through `ops::vector_filter::select_layers` or `one_layer`. Missing names
+  are errors on every surface.
+- Each binding maps its own argument names onto the core options and nothing more. The CLI's clap
+  defaults use the core constants, and the `--json-usage` catalog does not change for that.
+- Where a binding cannot use a const as a default (pyo3 renders it as `...`), use the literal and
+  pin it with a behavioral test that compares an omitted-option call with an explicit one.

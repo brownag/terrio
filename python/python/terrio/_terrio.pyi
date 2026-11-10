@@ -2479,12 +2479,7 @@ def clip_vector(
     like_layer: str | None = None,
     like_where: str | None = None,
     like_sql: str | None = None,
-) -> Layer | VectorDataset:
-    """Clip vector features to a bbox, polygon or vector/raster template.
-
-    Returns a Layer for one selected layer and a VectorDataset for several (or any `layers=`).
-    """
-
+) -> Layer | VectorDataset: ...
 def check_coverage(
     src: Any,
     *,

@@ -1631,7 +1631,9 @@ struct SimplifyCoverageArgs {
 /// Options: `preserveBoundary`, `layer` (select one), `activeLayer` (copy other layers unchanged).
 /// `layer` and `activeLayer` are mutually exclusive.
 /// Inputs must form a valid polygon coverage. Attributes and CRS are retained;
-/// output feature IDs are sequential from 1 in each layer.
+/// output feature IDs are sequential from 1 in each layer. To write the result to GeoPackage
+/// without changing its declared geometry type, pass `preserveDeclaredGeometryType: true` to the
+/// write call; a Dataset carries no write intent.
 #[wasm_bindgen(js_name = simplifyCoverage)]
 pub fn simplify_coverage(src: JsValue, tolerance: f64, options: JsValue) -> Result<Dataset, JsError> {
     let args: SimplifyCoverageArgs = parse_options(&options)?;

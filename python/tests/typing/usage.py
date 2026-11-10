@@ -167,9 +167,14 @@ def vectors(tmp: Path, raster: terrio.Raster) -> None:
     columns: dict[str, list[Any]] = layer.columns()
     print(fields, collection["type"], geo["type"], len(wkb), sorted(columns))
     reprojected = layer.to_crs("EPSG:4326")
-    clipped_vector: terrio.Layer = terrio.clip_vector(layer, bbox=[0.0, 0.0, 2.0, 2.0], layer=layer.name)
-    clipped_many: terrio.VectorDataset = terrio.clip_vector(layer, bbox=[0.0, 0.0, 2.0, 2.0], layers=["parcels"])
+    clipped_vector: terrio.Layer = terrio.clip_vector(
+        layer, bbox=[0.0, 0.0, 2.0, 2.0], layer=layer.name
+    )
+    clipped_many: terrio.VectorDataset = terrio.clip_vector(
+        layer, bbox=[0.0, 0.0, 2.0, 2.0], layers=["parcels"]
+    )
     _ = clipped_vector.to_geojson()
+    _ = clipped_many.layer_names
     algebra: terrio.Layer = terrio.layer_algebra(layer, layer, "identity")
     _ = algebra.to_geojson()
 

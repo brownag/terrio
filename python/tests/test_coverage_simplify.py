@@ -219,3 +219,14 @@ def test_typed_empty_polygon_and_optional_z_have_valid_wkb(tmp_path):
         blob = db.execute("SELECT geom FROM layer ORDER BY fid DESC LIMIT 1").fetchone()[0]
         assert blob[3] & 0x10
         assert struct.unpack("<II", blob[9:17]) == (3, 0)
+
+
+def test_simplified_gpkg_keeps_declared_type_when_requested(tmp_path):
+    # A Layer carries no write intent, so the caller passes the flag when writing (J3).
+    simplified = terrio.simplify_coverage(terrio.Layer.from_geojson(source(), name="coverage"), 1.0)
+    path = tmp_path / "simplified.gpkg"
+    simplified.write(str(path), preserve_declared_geometry_type=True)
+    with closing(sqlite3.connect(path)) as db:
+        assert db.execute("SELECT geometry_type_name FROM gpkg_geometry_columns").fetchone() == (
+            "GEOMETRY",
+        )

@@ -238,4 +238,6 @@ def test_lineref_rejects_several_layers_on_a_dataset_without_a_name(tmp_path):
     assert len(dataset.layers) == 2
     with pytest.raises(terrio.InvalidArgumentError, match="choose one with layer"):
         terrio.lineref_position(dataset, 100, 0)
-    assert terrio.lineref_position(dataset, 100, 0, layer="parts") == pytest.approx(1000 + 100 / 1.15)
+    assert terrio.lineref_position(dataset, 100, 0, layer="parts") == pytest.approx(
+        1000 + 100 / 1.15
+    )

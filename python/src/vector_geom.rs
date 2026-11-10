@@ -352,6 +352,9 @@ fn check_coverage(
 
 /// Simplify shared polygon coverage boundaries without creating gaps or overlaps.
 ///
+/// To write the result to GeoPackage without changing its declared geometry type, pass
+/// `preserve_declared_geometry_type=True` to the write call; a Layer carries no write intent.
+///
 /// Args:
 ///     src: Polygonal vector input forming a valid coverage, or multiple layers.
 ///     tolerance: Square root of the triangle-area threshold, in input CRS units.

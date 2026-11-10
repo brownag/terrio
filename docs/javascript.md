@@ -328,7 +328,8 @@ The input can be a dataset or raster bytes. `om` selects NORMAL visibility, DEM 
 visible elevation, or GROUND minimum height above the DEM. `cc` is 1 minus refraction.
 For cumulative visibility, pass `{ om: "ACCUM", os: 10 }`; `os` sets observer
 spacing in pixels (default 10). JavaScript retains positional coordinates:
-use `viewshed(dem, 0, 0, { om: "ACCUM", os: 10 })`; the CLI permits omitting them.
+use `viewshed(dem, undefined, undefined, { om: "ACCUM", os: 10 })`; the observer coordinates may be
+omitted, as in the CLI and Python.
 See [viewshed](cli.md#viewshed) for units, curvature, radius cropping and nodata behavior.
 
 ### Vector gridding and linear referencing
