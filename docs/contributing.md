@@ -316,9 +316,13 @@ cannot drift:
 - Validation that depends on several options lives in core, as a `checked` or `region`-style
   method (for example `ViewshedOptions::checked` and `ClipSpec::region`). Bindings call it and do
   not repeat the rule.
-- Layer selection goes through `ops::vector_filter::select_layers` or `one_layer`. Missing names
-  are errors on every surface.
+- Missing layer names are errors on every surface, with the one message `no layer named X (layers:
+  ...)` from `ops::vector_filter::no_layer_named`. Operations that work on one layer take it
+  through `ops::vector_filter::one_layer`. Operations that process every layer keep their
+  documented all-layers default (`docs/cli.md`, `docs/javascript.md`), so the layer rule is not the
+  same on every surface by design.
 - Each binding maps its own argument names onto the core options and nothing more. The CLI's clap
-  defaults use the core constants, and the `--json-usage` catalog does not change for that.
+  defaults are literals that must equal the core constants by hand; no test pins them yet. The
+  `--json-usage` catalog does not change for that.
 - Where a binding cannot use a const as a default (pyo3 renders it as `...`), use the literal and
   pin it with a behavioral test that compares an omitted-option call with an explicit one.
