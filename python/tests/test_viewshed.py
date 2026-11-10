@@ -84,7 +84,7 @@ def test_accum_needs_no_observer_coordinates():
         terrio.viewshed(src, om="NORMAL", cc=0)
 
 
-def test_viewshed_defaults_match_core():
+def test_viewshed_omitted_options_equal_explicit_defaults():
     # pyo3 renders the core-constant defaults as Ellipsis in the signature, so pin them by behavior:
     # a call that omits each option must equal one that passes the documented value.
     src = terrio.Raster.from_array(
@@ -94,3 +94,13 @@ def test_viewshed_defaults_match_core():
     explicit = terrio.viewshed(src, 5, 5, oz=2.0, tz=0.0, md=0.0, ov=0, band=1, om="NORMAL", os=10)
     np.testing.assert_array_equal(omitted.read(1), explicit.read(1))
     assert omitted.width == explicit.width == 5
+
+
+def test_viewshed_rejects_a_lone_observer_coordinate():
+    src = terrio.Raster.from_array(
+        np.array([[0, 0, 10, 0, 0]], dtype="float64"), (0, 10, 0, 10, 0, -10), crs="EPSG:32611"
+    )
+    with pytest.raises(ValueError, match="observer coordinates must be given together"):
+        terrio.viewshed(src, 5, None)
+    with pytest.raises(ValueError, match="observer coordinates must be given together"):
+        terrio.viewshed(src, None, 5, om="ACCUM")

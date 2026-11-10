@@ -95,19 +95,20 @@ impl ViewshedOptions {
     /// `observer` is the `(x, y)` pair, or `None` when the caller omitted it. A mode that needs
     /// an observer rejects `None`. ACCUM accepts `None` and uses `(0, 0)`, since it places its
     /// own observers.
-    pub fn checked(mut self, observer: Option<(f64, f64)>) -> Result<Self> {
-        match observer {
-            Some((x, y)) => {
+    pub fn checked(mut self, ox: Option<f64>, oy: Option<f64>) -> Result<Self> {
+        match (ox, oy) {
+            (Some(x), Some(y)) => {
                 self.observer_x = x;
                 self.observer_y = y;
             }
-            None if self.mode.requires_observer() => {
+            (None, None) if self.mode.requires_observer() => {
                 return Err(Error::InvalidArgument("observer coordinates are required except in ACCUM mode".into()));
             }
-            None => {
+            (None, None) => {
                 self.observer_x = 0.0;
                 self.observer_y = 0.0;
             }
+            _ => return Err(Error::InvalidArgument("observer coordinates must be given together, as x and y".into())),
         }
         Ok(self)
     }
@@ -447,19 +448,24 @@ mod tests {
     #[test]
     fn checked_requires_observer_outside_accum() {
         let normal = ViewshedOptions::default();
-        let err = normal.clone().checked(None).unwrap_err();
+        let err = normal.clone().checked(None, None).unwrap_err();
         assert!(err.to_string().contains("observer coordinates are required except in ACCUM mode"), "{err}");
-        let set = normal.checked(Some((3.5, -2.0))).unwrap();
+        let set = normal.checked(Some(3.5), Some(-2.0)).unwrap();
         assert_eq!((set.observer_x, set.observer_y), (3.5, -2.0));
-        assert!(ViewshedOptions { mode: ViewshedMode::Dem, ..Default::default() }.checked(None).is_err());
-        assert!(ViewshedOptions { mode: ViewshedMode::Ground, ..Default::default() }.checked(None).is_err());
+        assert!(ViewshedOptions { mode: ViewshedMode::Dem, ..Default::default() }.checked(None, None).is_err());
+        assert!(ViewshedOptions { mode: ViewshedMode::Ground, ..Default::default() }.checked(None, None).is_err());
+        assert!(normal_with(Some(1.0), None).is_err());
+        assert!(normal_with(None, Some(1.0)).is_err());
+    }
+    fn normal_with(ox: Option<f64>, oy: Option<f64>) -> Result<ViewshedOptions> {
+        ViewshedOptions::default().checked(ox, oy)
     }
     #[test]
     fn checked_accepts_missing_observer_in_accum() {
         let accum = ViewshedOptions { mode: ViewshedMode::Cumulative, observer_x: 9.0, observer_y: 9.0, ..Default::default() };
-        let checked = accum.checked(None).unwrap();
+        let checked = accum.checked(None, None).unwrap();
         assert_eq!((checked.observer_x, checked.observer_y), (0.0, 0.0));
-        let given = ViewshedOptions { mode: ViewshedMode::Cumulative, ..Default::default() }.checked(Some((4.0, 5.0))).unwrap();
+        let given = ViewshedOptions { mode: ViewshedMode::Cumulative, ..Default::default() }.checked(Some(4.0), Some(5.0)).unwrap();
         assert_eq!((given.observer_x, given.observer_y), (4.0, 5.0));
         assert!(!ViewshedMode::Cumulative.requires_observer());
         assert!(ViewshedMode::Normal.requires_observer());
@@ -492,5 +498,7 @@ mod tests {
         assert_eq!(literal("ov"), f64::from(DEFAULT_OUT_OF_RANGE));
         assert_eq!(literal("band"), DEFAULT_BAND as f64);
         assert_eq!(literal("os"), DEFAULT_OBSERVER_SPACING as f64);
+        assert!(signature.contains("om=\"NORMAL\""), "the om default must be NORMAL");
+        assert_eq!(ViewshedMode::default(), ViewshedMode::Normal);
     }
 }

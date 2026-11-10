@@ -542,7 +542,7 @@ fn viewshed(
         observer_spacing: os,
         ..Default::default()
     }
-    .checked(ox.zip(oy))
+    .checked(ox, oy)
     .py()?;
     let ds = input_raster(py, src)?;
     let out = py.detach_result(|| terrio::ops::viewshed::viewshed(&ds, &o)).py()?;

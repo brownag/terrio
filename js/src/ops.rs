@@ -1062,7 +1062,7 @@ pub fn viewshed(src: JsValue, ox: Option<f64>, oy: Option<f64>, options: JsValue
         observer_spacing: a.os,
         ..Default::default()
     }
-    .checked(ox.zip(oy))
+    .checked(ox, oy)
     .map_err(js_err)?;
     let ds = input_raster(&src)?;
     Ok(Dataset::from_raster(terrio::ops::viewshed::viewshed(&ds, &o).map_err(js_err)?))

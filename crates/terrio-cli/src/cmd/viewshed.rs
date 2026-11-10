@@ -62,7 +62,7 @@ pub fn run(a: Args) -> terrio::Result<()> {
         observer_spacing: a.os,
         ..Default::default()
     }
-    .checked(a.ox.zip(a.oy))?;
+    .checked(a.ox, a.oy)?;
     let ds = open(&a.input)?;
     a.out.write(&viewshed(&ds, &o)?, &a.output)
 }

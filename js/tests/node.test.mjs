@@ -1895,6 +1895,8 @@ test("viewshed visibility, height and byte input", () => {
   assert.throws(() => terrio.viewshed(dem, 0, 0, { om: "ACCUM", os: 0 }), /spacing/);
   assert.deepEqual([...terrio.viewshed(dem, undefined, undefined, { om: "ACCUM", os: 2, cc: 0 }).readBand(1)], [170, 170, 255, 170, 170]);
   assert.throws(() => terrio.viewshed(dem, undefined, undefined, { cc: 0 }), /observer coordinates are required/);
+  assert.throws(() => terrio.viewshed(dem, 0, undefined, { cc: 0 }), /observer coordinates must be given together/);
+  assert.throws(() => terrio.viewshed(dem, undefined, 0, { om: "ACCUM", os: 2 }), /observer coordinates must be given together/);
 });
 
 test("warp from subsampled pixel-center geolocation arrays", () => {
