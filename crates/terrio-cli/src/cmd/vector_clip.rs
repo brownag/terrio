@@ -6,7 +6,7 @@
 //! Polygon clipping of vector features.
 use super::processing::{VectorInput, VectorOutput};
 use terrio::crs::SpatialRef;
-use terrio::ops::vector_clip::{ClipRegion, ClipTemplateOptions};
+use terrio::ops::vector_clip::{ClipSpec, TemplateSource};
 use terrio::{Error, Result};
 
 #[derive(clap::Args)]
@@ -46,17 +46,21 @@ pub fn run(a: Args) -> Result<()> {
     {
         return Err(Error::InvalidArgument("output exists; use --append or --overwrite explicitly".into()));
     }
-    let region = if let Some(bbox) = a.bbox {
-        ClipRegion::bbox(
-            bbox.try_into().map_err(|_| Error::InvalidArgument("bbox needs four coordinates".into()))?,
-            a.bbox_crs.as_deref().map(SpatialRef::parse).transpose()?,
-        )?
+    let spec = if let Some(bbox) = a.bbox {
+        ClipSpec::Bbox {
+            bounds: bbox.try_into().map_err(|_| Error::InvalidArgument("bbox needs four coordinates".into()))?,
+            crs: a.bbox_crs.as_deref().map(SpatialRef::parse).transpose()?,
+        }
     } else if let Some(text) = a.geometry {
-        ClipRegion::parse(&text, a.geometry_crs.as_deref().map(SpatialRef::parse).transpose()?)?
+        ClipSpec::Geometry { text, crs: a.geometry_crs.as_deref().map(SpatialRef::parse).transpose()? }
     } else {
-        let path = a.like.as_deref().unwrap();
-        ClipRegion::from_path(path, &ClipTemplateOptions { layer: a.like_layer, where_clause: a.like_where, sql: a.like_sql })?
+        let path = a.like.expect("the region group requires one of bbox, geometry or like");
+        ClipSpec::Template {
+            source: TemplateSource::Path(path),
+            options: terrio::ops::vector_clip::ClipTemplateOptions { layer: a.like_layer, where_clause: a.like_where, sql: a.like_sql },
+        }
     };
+    let region = spec.region()?;
     let input = terrio::ops::vector_filter::open_layers(
         &a.input.input,
         &terrio::VectorOpenOptions { layers: a.input.layers, ..Default::default() },
