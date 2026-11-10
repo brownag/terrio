@@ -228,6 +228,23 @@ pub enum ClipSpec {
     },
 }
 
+/// Checks the argument rules every surface shares, before a region is built. Bindings report which
+/// arguments were given; the CLI enforces the same rules through clap.
+///
+/// `template_filters` is true when `like_layer`, `like_where` or `like_sql` was given.
+pub fn validate_region_args(bbox: bool, geometry: bool, like: bool, crs: bool, template_filters: bool) -> Result<()> {
+    if usize::from(bbox) + usize::from(geometry) + usize::from(like) != 1 {
+        return Err(Error::InvalidArgument("provide exactly one of bbox, geometry or like".into()));
+    }
+    if template_filters && !like {
+        return Err(Error::InvalidArgument("template filters require like".into()));
+    }
+    if like && crs {
+        return Err(Error::InvalidArgument("crs applies only to bbox/geometry".into()));
+    }
+    Ok(())
+}
+
 impl ClipSpec {
     /// Builds the clipping region, checking the rules shared by every surface.
     pub fn region(self) -> Result<ClipRegion> {
@@ -895,5 +912,31 @@ mod tests {
         let out = clip(&input, &region).unwrap();
         assert_eq!(out.features[0].geometry, input.features[0].geometry);
         assert!(SpatialRef::from_layer(&out).same_as(&SpatialRef::from_layer(&input)));
+    }
+
+    #[test]
+    fn validate_region_args_requires_exactly_one_region() {
+        let message = |bbox, geometry, like| validate_region_args(bbox, geometry, like, false, false).unwrap_err().to_string();
+        assert!(message(false, false, false).contains("provide exactly one of bbox, geometry or like"));
+        assert!(message(true, true, false).contains("provide exactly one of bbox, geometry or like"));
+        assert!(message(true, false, true).contains("provide exactly one of bbox, geometry or like"));
+        assert!(validate_region_args(true, false, false, true, false).is_ok());
+        assert!(validate_region_args(false, true, false, false, false).is_ok());
+        assert!(validate_region_args(false, false, true, false, false).is_ok());
+    }
+
+    #[test]
+    fn validate_region_args_rejects_template_filters_without_like() {
+        let err = validate_region_args(true, false, false, false, true).unwrap_err();
+        assert!(err.to_string().contains("template filters require like"), "{err}");
+        assert!(validate_region_args(false, false, true, false, true).is_ok());
+    }
+
+    #[test]
+    fn validate_region_args_rejects_crs_with_like() {
+        let err = validate_region_args(false, false, true, true, false).unwrap_err();
+        assert!(err.to_string().contains("crs applies only to bbox/geometry"), "{err}");
+        assert!(validate_region_args(true, false, false, true, false).is_ok());
+        assert!(validate_region_args(false, true, false, true, false).is_ok());
     }
 }

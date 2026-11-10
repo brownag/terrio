@@ -538,7 +538,7 @@ def test_zonal_reducer_layer_and_crs():
     zones["features"] = zones["features"][:2]
     second = terrio.Layer.from_geojson(zones, name="second", crs="EPSG:4326")
     args = (300, 200, REDUCER_TRANSFORM, "EPSG:4326")
-    with pytest.raises(terrio.InvalidArgumentError, match="choose one with layer="):
+    with pytest.raises(terrio.InvalidArgumentError, match="choose one with layer"):
         terrio.ZonalReducer([first, second], *args)
     assert terrio.ZonalReducer([first, second], *args, layer="second").feature_count == 2
     with pytest.raises(

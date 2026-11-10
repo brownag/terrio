@@ -4,6 +4,7 @@
 use crate::ops::{data_type, input_layers, srs, vector_write_options};
 use crate::raster::PyRaster;
 use crate::vector::{PyLayer, PyVectorDataset};
+use crate::vector_geom::one_layer;
 use crate::{Detach, PyResultExt, invalid};
 use pyo3::prelude::*;
 use terrio::ops::lineref::LineRefOptions;
@@ -152,12 +153,6 @@ fn vector_grid(
         Ok(out)
     })?;
     Ok(PyRaster::from_dataset(out))
-}
-
-/// The one layer of a source: the named one, or the only layer. Core owns the policy and messages.
-fn one_layer(py: Python<'_>, src: &Bound<'_, PyAny>, layer: Option<String>) -> PyResult<terrio::Layer> {
-    let layers = input_layers(py, src, layer.clone().map(|l| vec![l]))?;
-    terrio::ops::vector_filter::one_layer(layers, layer.as_deref()).py()
 }
 
 /// Borrow an in-memory layer for lookups; paths and serialized inputs are opened once.

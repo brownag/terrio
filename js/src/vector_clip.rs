@@ -4,7 +4,7 @@ use crate::{Dataset, Inner, js_err, parse_options};
 use serde::Deserialize;
 use terrio::crs::SpatialRef;
 use terrio::formats::{Kind, VectorDriver};
-use terrio::ops::vector_clip::{ClipSpec, ClipTemplateOptions, TemplateSource};
+use terrio::ops::vector_clip::{ClipSpec, ClipTemplateOptions, TemplateSource, validate_region_args};
 use wasm_bindgen::prelude::*;
 
 #[derive(Deserialize, Default)]
@@ -31,15 +31,14 @@ struct Args {
 #[wasm_bindgen(js_name=clipVector)]
 pub fn clip_vector(src: JsValue, options: JsValue) -> Result<Dataset, JsError> {
     let args: Args = parse_options(&options)?;
-    if usize::from(args.bbox.is_some()) + usize::from(args.geometry.is_some()) + usize::from(args.like.is_some()) != 1 {
-        return Err(invalid("provide exactly one of bbox, geometry or like"));
-    }
-    if args.like.is_none() && (args.like_layer.is_some() || args.like_where.is_some() || args.like_sql.is_some()) {
-        return Err(invalid("likeLayer/Where/Sql require like"));
-    }
-    if args.like.is_some() && args.crs.is_some() {
-        return Err(invalid("crs applies only to bbox/geometry"));
-    }
+    validate_region_args(
+        args.bbox.is_some(),
+        args.geometry.is_some(),
+        args.like.is_some(),
+        args.crs.is_some(),
+        args.like_layer.is_some() || args.like_where.is_some() || args.like_sql.is_some(),
+    )
+    .map_err(js_err)?;
     let crs = args.crs.as_deref().map(SpatialRef::parse).transpose().map_err(js_err)?;
     let spec = if let Some(bounds) = args.bbox {
         ClipSpec::Bbox { bounds, crs }

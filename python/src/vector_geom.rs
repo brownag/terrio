@@ -255,16 +255,15 @@ fn clip_vector(
     like_where: Option<String>,
     like_sql: Option<String>,
 ) -> PyResult<Py<PyAny>> {
-    use terrio::ops::vector_clip::{ClipSpec, ClipTemplateOptions, TemplateSource};
-    if usize::from(bbox.is_some()) + usize::from(geometry.is_some()) + usize::from(like.is_some()) != 1 {
-        return Err(invalid("provide exactly one of bbox, geometry or like"));
-    }
-    if like.is_none() && (like_layer.is_some() || like_where.is_some() || like_sql.is_some()) {
-        return Err(invalid("like_layer/where/sql require like"));
-    }
-    if like.is_some() && crs.is_some() {
-        return Err(invalid("crs applies only to bbox/geometry"));
-    }
+    use terrio::ops::vector_clip::{ClipSpec, ClipTemplateOptions, TemplateSource, validate_region_args};
+    validate_region_args(
+        bbox.is_some(),
+        geometry.is_some(),
+        like.is_some(),
+        crs.is_some(),
+        like_layer.is_some() || like_where.is_some() || like_sql.is_some(),
+    )
+    .py()?;
     if layer.is_some() && layers.is_some() {
         return Err(invalid("layer and layers are mutually exclusive"));
     }
