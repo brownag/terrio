@@ -4,7 +4,7 @@ use crate::{Dataset, Inner, js_err, parse_options};
 use serde::Deserialize;
 use terrio::crs::SpatialRef;
 use terrio::formats::{Kind, VectorDriver};
-use terrio::ops::vector_clip::{ClipRegion, ClipTemplateOptions};
+use terrio::ops::vector_clip::{ClipSpec, ClipTemplateOptions, TemplateSource};
 use wasm_bindgen::prelude::*;
 
 #[derive(Deserialize, Default)]
@@ -41,39 +41,31 @@ pub fn clip_vector(src: JsValue, options: JsValue) -> Result<Dataset, JsError> {
         return Err(invalid("crs applies only to bbox/geometry"));
     }
     let crs = args.crs.as_deref().map(SpatialRef::parse).transpose().map_err(js_err)?;
-    let template = ClipTemplateOptions { layer: args.like_layer, where_clause: args.like_where, sql: args.like_sql };
-    let region = if let Some(bbox) = args.bbox {
-        ClipRegion::bbox(bbox, crs).map_err(js_err)?
+    let spec = if let Some(bounds) = args.bbox {
+        ClipSpec::Bbox { bounds, crs }
     } else if let Some(geometry) = args.geometry {
         let text = match geometry {
             serde_json::Value::String(s) => s,
             g => g.to_string(),
         };
-        ClipRegion::parse(&text, crs).map_err(js_err)?
+        ClipSpec::Geometry { text, crs }
     } else {
         let like = js_sys::Reflect::get(&options, &JsValue::from_str("like")).map_err(|_| invalid("cannot read like"))?;
-        template_region(&like, &template)?
+        let template = ClipTemplateOptions { layer: args.like_layer, where_clause: args.like_where, sql: args.like_sql };
+        ClipSpec::Template { source: template_source(&like)?, options: template }
     };
+    let region = spec.region().map_err(js_err)?;
     let layers = selected_input_layers(&src, args.layers.as_deref().unwrap_or_default())?;
     let out = layers.iter().map(|l| terrio::ops::vector_clip::clip(l, &region)).collect::<terrio::Result<Vec<_>>>().map_err(js_err)?;
     Ok(Dataset::from_layers(out, VectorDriver::GeoJSON))
 }
 
-fn raster_options(options: &ClipTemplateOptions) -> Result<(), JsError> {
-    if options.layer.is_some() || options.where_clause.is_some() || options.sql.is_some() {
-        Err(invalid("likeLayer/Where/Sql require a vector template"))
-    } else {
-        Ok(())
-    }
-}
-fn template_region(like: &JsValue, options: &ClipTemplateOptions) -> Result<ClipRegion, JsError> {
+/// Reads a clipping template from a Dataset, uploaded bytes, or GeoJSON, as the core expects it.
+fn template_source(like: &JsValue) -> Result<TemplateSource, JsError> {
     if let Some(inner) = Dataset::lookup(like) {
         return match &*inner.borrow() {
-            Inner::Raster(r) => {
-                raster_options(options)?;
-                ClipRegion::from_raster(&r.header()).map_err(js_err)
-            }
-            Inner::Vector(layers, _) => ClipRegion::from_layers(layers, options).map_err(js_err),
+            Inner::Raster(r) => Ok(TemplateSource::Raster(Box::new(r.header()))),
+            Inner::Vector(layers, _) => Ok(TemplateSource::Layers(layers.clone())),
         };
     }
     if let Some((bytes, name)) = file_bytes(like) {
@@ -81,24 +73,17 @@ fn template_region(like: &JsValue, options: &ClipTemplateOptions) -> Result<Clip
         let has_raster = kind.as_ref().is_some_and(|i| i.kinds.contains(&Kind::Raster));
         let has_vector = kind.as_ref().is_some_and(|i| i.kinds.contains(&Kind::Vector));
         if has_raster && !has_vector {
-            raster_options(options)?;
-            return ClipRegion::from_raster(&terrio::memory::open_raster_lazy_bytes(bytes, &name).map_err(js_err)?.header())
-                .map_err(js_err);
+            let raster = terrio::memory::open_raster_lazy_bytes(bytes, &name).map_err(js_err)?.header();
+            return Ok(TemplateSource::Raster(Box::new(raster)));
         }
         if has_raster && has_vector {
             return match terrio::memory::open_bytes(bytes, &name).map_err(js_err)? {
-                terrio::Dataset::Raster(r) => {
-                    raster_options(options)?;
-                    ClipRegion::from_raster(&r).map_err(js_err)
-                }
-                terrio::Dataset::Vector(v) => ClipRegion::from_layers(&v.layers, options).map_err(js_err),
+                terrio::Dataset::Raster(r) => Ok(TemplateSource::Raster(Box::new(r))),
+                terrio::Dataset::Vector(v) => Ok(TemplateSource::Layers(v.layers)),
             };
         }
-        return ClipRegion::from_layers(
-            &terrio::memory::open_vector_bytes(bytes, &name, &Default::default()).map_err(js_err)?.layers,
-            options,
-        )
-        .map_err(js_err);
+        let layers = terrio::memory::open_vector_bytes(bytes, &name, &Default::default()).map_err(js_err)?.layers;
+        return Ok(TemplateSource::Layers(layers));
     }
-    ClipRegion::from_layers(&input_layers(like)?, options).map_err(js_err)
+    Ok(TemplateSource::Layers(input_layers(like)?))
 }

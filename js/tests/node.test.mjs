@@ -1893,6 +1893,8 @@ test("viewshed visibility, height and byte input", () => {
   assert.equal(terrio.viewshed(dem, 5, 5, { md: 20 }).width, 3);
   assert.deepEqual([...terrio.viewshed(dem, 0, 0, { om: "ACCUM", os: 2, cc: 0 }).readBand(1)], [170, 170, 255, 170, 170]);
   assert.throws(() => terrio.viewshed(dem, 0, 0, { om: "ACCUM", os: 0 }), /spacing/);
+  assert.deepEqual([...terrio.viewshed(dem, undefined, undefined, { om: "ACCUM", os: 2, cc: 0 }).readBand(1)], [170, 170, 255, 170, 170]);
+  assert.throws(() => terrio.viewshed(dem, undefined, undefined, { cc: 0 }), /ox and oy|--ox and --oy/);
 });
 
 test("warp from subsampled pixel-center geolocation arrays", () => {
@@ -3421,6 +3423,8 @@ test("clipVector preserves attributes, boundary points and interpolated line Z",
   assert.throws(() => terrio.clipVector(src, {}), /exactly one/);
   assert.throws(() => terrio.clipVector(src, {bbox:[0,0,0,1]}), /bbox/);
   assert.throws(() => terrio.clipVector(src, {bbox:[0,0,2,2], layers:["missing"]}), /no layer/);
+  assert.throws(() => terrio.clipVector(src, {like: template, crs: "EPSG:4326"}), /crs applies only to bbox\/geometry/);
+  assert.throws(() => terrio.clipVector(src, {bbox:[0,0,2,2], likeWhere: "keep=1"}), /require like/);
 });
 
 test("checkCoverage uses GDAL schema and flags overlaps and narrow gaps", () => {

@@ -1024,23 +1024,35 @@ struct ViewshedArgs {
 }
 impl Default for ViewshedArgs {
     fn default() -> Self {
-        Self { band: 1, oz: 2.0, tz: 0.0, md: 0.0, cc: None, om: "NORMAL".into(), ov: 0, os: 10 }
+        use terrio::ops::viewshed::{
+            DEFAULT_BAND, DEFAULT_MAX_DISTANCE, DEFAULT_OBSERVER_HEIGHT, DEFAULT_OBSERVER_SPACING, DEFAULT_OUT_OF_RANGE,
+            DEFAULT_TARGET_HEIGHT,
+        };
+        Self {
+            band: DEFAULT_BAND,
+            oz: DEFAULT_OBSERVER_HEIGHT,
+            tz: DEFAULT_TARGET_HEIGHT,
+            md: DEFAULT_MAX_DISTANCE,
+            cc: None,
+            om: "NORMAL".into(),
+            ov: DEFAULT_OUT_OF_RANGE,
+            os: DEFAULT_OBSERVER_SPACING,
+        }
     }
 }
 
 /// Single-observer visibility or minimum visible height on a projected DEM.
-/// `ox`, `oy` are coordinates in the DEM CRS. Options: `band`, `oz` (observer height),
+/// `ox`, `oy` are coordinates in the DEM CRS; they may be omitted (`null`/`undefined`) in ACCUM.
+/// Options: `band`, `oz` (observer height),
 /// `tz` (target height), `md` (maximum distance, 0 unlimited), `cc` (curvature coefficient,
 /// 1 minus refraction), `om` (NORMAL/DEM/GROUND/ACCUM), `os` (ACCUM observer spacing in pixels, default 10), `ov` (out-of-range value).
 /// Numeric nodata is treated as elevation, as in GDAL; nonfinite elevations are rejected.
 #[wasm_bindgen]
-pub fn viewshed(src: JsValue, ox: f64, oy: f64, options: JsValue) -> Result<Dataset, JsError> {
+pub fn viewshed(src: JsValue, ox: Option<f64>, oy: Option<f64>, options: JsValue) -> Result<Dataset, JsError> {
     use terrio::ops::viewshed::{ViewshedMode, ViewshedOptions};
     let a: ViewshedArgs = parse_options(&options)?;
     let o = ViewshedOptions {
         band: a.band,
-        observer_x: ox,
-        observer_y: oy,
         observer_height: a.oz,
         target_height: a.tz,
         max_distance: a.md,
@@ -1048,7 +1060,10 @@ pub fn viewshed(src: JsValue, ox: f64, oy: f64, options: JsValue) -> Result<Data
         mode: ViewshedMode::parse(&a.om).map_err(js_err)?,
         out_of_range: a.ov,
         observer_spacing: a.os,
-    };
+        ..Default::default()
+    }
+    .checked(ox.zip(oy))
+    .map_err(js_err)?;
     let ds = input_raster(&src)?;
     Ok(Dataset::from_raster(terrio::ops::viewshed::viewshed(&ds, &o).map_err(js_err)?))
 }
