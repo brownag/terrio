@@ -149,3 +149,23 @@ def test_existing_brace_prefixed_paths_are_not_inline_geojson(tmp_path, monkeypa
     assert rows(terrio.clip_vector(src, like=mask)) == rows(
         terrio.clip_vector(source(), bbox=[0, 0, 2, 2])
     )
+
+
+def test_clip_returns_layer_for_one_layer():
+    clipped = terrio.clip_vector(source(), bbox=[-2, 0, 4, 3])
+    assert isinstance(clipped, terrio.Layer)
+    assert [f["properties"]["name"] for f in rows(clipped)] == ["road", "boundary"]
+
+
+def test_clip_returns_dataset_for_several_layers(tmp_path):
+    first = terrio.Layer.from_geojson(source(), name="roads")
+    second = terrio.Layer.from_geojson(source(), name="other")
+    path = str(tmp_path / "two.gpkg")
+    terrio.write_vector([first, second], path)
+    clipped = terrio.clip_vector(path, bbox=[-2, 0, 4, 3])
+    assert isinstance(clipped, terrio.VectorDataset)
+    assert sorted(clipped.layer_names) == ["other", "roads"]
+    selected = terrio.clip_vector(path, bbox=[-2, 0, 4, 3], layers=["roads"])
+    assert isinstance(selected, terrio.VectorDataset)
+    with pytest.raises(terrio.InvalidArgumentError, match="missing"):
+        terrio.clip_vector(path, bbox=[-2, 0, 4, 3], layers=["missing"])

@@ -236,10 +236,11 @@ fn sort(py: Python<'_>, src: &Bound<'_, PyAny>, method: &str, layer: Option<Stri
 ///     like_sql: Supported SELECT subset for the vector template.
 ///
 /// Returns:
-///     Layer: Clipped features with retained attributes and CRS, and sequential IDs.
-///         Points/line cuts retain/interpolate Z/M; new polygon topology is XY.
+///     Layer or VectorDataset: Clipped features with retained attributes and CRS, and sequential
+///         IDs. A single selected layer returns a Layer; several (or any `layers=`) return a
+///         VectorDataset. Points/line cuts retain/interpolate Z/M; new polygon topology is XY.
 #[pyfunction]
-#[pyo3(signature=(src, *, bbox=None, geometry=None, like=None, crs=None, layer=None, like_layer=None, like_where=None, like_sql=None))]
+#[pyo3(signature=(src, *, bbox=None, geometry=None, like=None, crs=None, layer=None, layers=None, like_layer=None, like_where=None, like_sql=None))]
 #[allow(clippy::too_many_arguments)]
 fn clip_vector(
     py: Python<'_>,
@@ -249,11 +250,12 @@ fn clip_vector(
     like: Option<&Bound<'_, PyAny>>,
     crs: Option<String>,
     layer: Option<String>,
+    layers: Option<Vec<String>>,
     like_layer: Option<String>,
     like_where: Option<String>,
     like_sql: Option<String>,
-) -> PyResult<PyLayer> {
-    use terrio::ops::vector_clip::{ClipRegion, ClipTemplateOptions};
+) -> PyResult<Py<PyAny>> {
+    use terrio::ops::vector_clip::{ClipSpec, ClipTemplateOptions, TemplateSource};
     if usize::from(bbox.is_some()) + usize::from(geometry.is_some()) + usize::from(like.is_some()) != 1 {
         return Err(invalid("provide exactly one of bbox, geometry or like"));
     }
@@ -263,55 +265,56 @@ fn clip_vector(
     if like.is_some() && crs.is_some() {
         return Err(invalid("crs applies only to bbox/geometry"));
     }
+    if layer.is_some() && layers.is_some() {
+        return Err(invalid("layer and layers are mutually exclusive"));
+    }
     let crs = crs.as_deref().map(terrio::crs::SpatialRef::parse).transpose().py()?;
-    let template = ClipTemplateOptions { layer: like_layer, where_clause: like_where, sql: like_sql };
-    let region = if let Some(bbox) = bbox {
-        ClipRegion::bbox(bbox, crs).py()?
+    let options = ClipTemplateOptions { layer: like_layer, where_clause: like_where, sql: like_sql };
+    let spec = if let Some(bbox) = bbox {
+        ClipSpec::Bbox { bounds: bbox, crs }
     } else if let Some(text) = geometry {
-        ClipRegion::parse(&text, crs).py()?
+        ClipSpec::Geometry { text, crs }
     } else {
         let like = like.unwrap();
-        if let Ok(raster) = like.cast::<crate::raster::PyRaster>() {
-            if template.layer.is_some() || template.where_clause.is_some() || template.sql.is_some() {
-                return Err(invalid("like_layer/where/sql require a vector template"));
-            }
-            ClipRegion::from_raster(&raster.borrow().inner.header()).py()?
-        } else if let Some(layers) = clip_inline_geojson(like) {
-            ClipRegion::from_layers(&layers?, &template).py()?
+        let source = if let Ok(raster) = like.cast::<crate::raster::PyRaster>() {
+            TemplateSource::Raster(Box::new(raster.borrow().inner.header()))
+        } else if let Some(template) = clip_inline_geojson(like) {
+            TemplateSource::Layers(template?)
         } else if let Ok(path) = like.extract::<std::path::PathBuf>() {
             let path = path.to_str().ok_or_else(|| invalid("template path must be UTF-8"))?;
-            native_clip_template(py, path, &template)?
+            TemplateSource::Path(path.to_owned())
         } else {
-            ClipRegion::from_layers(&input_layers(py, like, None)?, &template).py()?
-        }
+            TemplateSource::Layers(input_layers(py, like, None)?)
+        };
+        ClipSpec::Template { source, options }
     };
-    let input = if let Some(layers) = clip_inline_geojson(src) {
-        let mut layers = layers?;
-        if let Some(name) = layer {
-            layers = terrio::ops::vector_filter::select_layers(layers, &[name]).py()?;
+    let region = py.detach_result(|| spec.region()).py()?;
+
+    let selected = layer.map(|name| vec![name]).or_else(|| layers.clone());
+    let inputs = if let Some(all) = clip_inline_geojson(src) {
+        let all = all?;
+        match &selected {
+            Some(names) => terrio::ops::vector_filter::select_layers(all, names).py()?,
+            None => all,
         }
-        if layers.len() != 1 {
-            return Err(invalid("clip_vector needs one input layer; select it with layer"));
-        }
-        layers.remove(0)
     } else if let Ok(path) = src.extract::<std::path::PathBuf>() {
         let path = path.to_str().ok_or_else(|| invalid("input path must be UTF-8"))?;
-        let mut layers = py
-            .detach_result(|| {
-                terrio::ops::vector_filter::open_layers(
-                    path,
-                    &terrio::VectorOpenOptions { layers: layer.into_iter().collect(), ..Default::default() },
-                )
-            })
-            .py()?;
-        if layers.len() != 1 {
-            return Err(invalid("clip_vector needs one input layer; select it with layer"));
-        }
-        layers.remove(0)
+        let options = terrio::VectorOpenOptions { layers: selected.clone().unwrap_or_default(), ..Default::default() };
+        py.detach_result(|| terrio::ops::vector_filter::open_layers(path, &options)).py()?
     } else {
-        one_layer(py, src, layer)?
+        input_layers(py, src, selected.clone())?
     };
-    Ok(PyLayer::from(py.detach_result(|| terrio::ops::vector_clip::clip(&input, &region)).py()?))
+    if inputs.is_empty() {
+        return Err(invalid("clip_vector needs an input layer"));
+    }
+    let clipped = py
+        .detach_result(|| inputs.iter().map(|input| terrio::ops::vector_clip::clip(input, &region)).collect::<terrio::Result<Vec<_>>>())
+        .py()?;
+    if let ([single], None) = (clipped.as_slice(), &layers) {
+        return Ok(Py::new(py, PyLayer::from(single.clone()))?.into_any());
+    }
+    let dataset = terrio::VectorDataset::new(clipped, terrio::formats::VectorDriver::GeoJSON);
+    Ok(Py::new(py, PyVectorDataset::new(py, dataset)?)?.into_any())
 }
 
 fn clip_inline_geojson(value: &Bound<'_, PyAny>) -> Option<PyResult<Vec<Layer>>> {
@@ -320,23 +323,6 @@ fn clip_inline_geojson(value: &Bound<'_, PyAny>) -> Option<PyResult<Vec<Layer>>>
         return None;
     }
     Some(terrio::memory::open_vector_bytes(text.into_bytes(), "input.geojson", &Default::default()).map(|v| v.layers).py())
-}
-
-#[cfg(not(target_family = "wasm"))]
-fn native_clip_template(
-    py: Python<'_>,
-    path: &str,
-    template: &terrio::ops::vector_clip::ClipTemplateOptions,
-) -> PyResult<terrio::ops::vector_clip::ClipRegion> {
-    py.detach_result(|| terrio::ops::vector_clip::ClipRegion::from_path(path, template)).py()
-}
-#[cfg(target_family = "wasm")]
-fn native_clip_template(
-    _: Python<'_>,
-    _: &str,
-    _: &terrio::ops::vector_clip::ClipTemplateOptions,
-) -> PyResult<terrio::ops::vector_clip::ClipRegion> {
-    Err(invalid("template paths are unavailable in WebAssembly; pass a Raster or vector data"))
 }
 
 /// Find invalid boundary segments in a polygon coverage.

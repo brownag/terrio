@@ -497,20 +497,24 @@ fn sieve(
 /// the DEM. `md` is maximum distance (0 unlimited); `cc` is curvature coefficient
 /// (1 minus refraction, 0 flat Earth). `om` is NORMAL, DEM, GROUND or ACCUM. ACCUM ignores `ox`/`oy`;
 /// `os` sets observer spacing in pixels (default 10), and returns normalized Byte visibility.
-/// Pass `0, 0` for the required positional coordinates in ACCUM; the CLI may omit them. Numeric nodata
+/// `ox` and `oy` may be omitted in ACCUM, where the observers are placed by the mode. Numeric nodata
 /// is treated as elevation, as in GDAL; nonfinite elevations are rejected.
 ///
 /// Args:
 ///     options: Format-specific creation options, as with `Raster.write(options=...)`.
 #[pyfunction]
-#[pyo3(signature = (src, ox, oy, dst=None, *, oz=2.0, tz=0.0, md=0.0, cc=None, om="NORMAL", ov=0, band=1, os=10,
+// Literal defaults: pyo3 renders a const default as `...`, which stubtest rejects. They equal the
+// core constants in `terrio::ops::viewshed` (DEFAULT_OBSERVER_HEIGHT and the rest), pinned by
+// `test_viewshed_defaults_match_core`.
+#[pyo3(signature = (src, ox=None, oy=None, dst=None, *, oz=2.0, tz=0.0,
+    md=0.0, cc=None, om="NORMAL", ov=0, band=1, os=10,
     format=None, compress=None, tile_size=None, bigtiff=false, options=None))]
 #[allow(clippy::too_many_arguments)]
 fn viewshed(
     py: Python<'_>,
     src: &Bound<'_, PyAny>,
-    ox: f64,
-    oy: f64,
+    ox: Option<f64>,
+    oy: Option<f64>,
     dst: Option<&str>,
     oz: f64,
     tz: f64,
@@ -529,8 +533,6 @@ fn viewshed(
     use terrio::ops::viewshed::{ViewshedMode, ViewshedOptions};
     let o = ViewshedOptions {
         band,
-        observer_x: ox,
-        observer_y: oy,
         observer_height: oz,
         target_height: tz,
         max_distance: md,
@@ -538,7 +540,10 @@ fn viewshed(
         mode: ViewshedMode::parse(om).py()?,
         out_of_range: ov,
         observer_spacing: os,
-    };
+        ..Default::default()
+    }
+    .checked(ox.zip(oy))
+    .py()?;
     let ds = input_raster(py, src)?;
     let out = py.detach_result(|| terrio::ops::viewshed::viewshed(&ds, &o)).py()?;
     finish_raster(py, out, dst, format, compress, tile_size, bigtiff, options)

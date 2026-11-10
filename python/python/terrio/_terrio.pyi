@@ -1358,8 +1358,8 @@ def lineref_subline(
 
 def viewshed(
     src: str | Raster,
-    ox: float,
-    oy: float,
+    ox: float | None = None,
+    oy: float | None = None,
     dst: str | None = None,
     *,
     oz: float = 2.0,
@@ -2438,6 +2438,7 @@ def validate_gpkg(
     strict: bool = False,
     unicode_case: bool = False,
 ) -> dict[str, Any]: ...
+@overload
 def clip_vector(
     src: Any,
     *,
@@ -2445,12 +2446,44 @@ def clip_vector(
     geometry: str | None = None,
     like: Any = None,
     crs: str | None = None,
-    layer: str | None = None,
+    layer: str,
+    layers: None = None,
     like_layer: str | None = None,
     like_where: str | None = None,
     like_sql: str | None = None,
-) -> Layer:
-    """Clip vector features to a bbox, polygon or vector/raster template."""
+) -> Layer: ...
+@overload
+def clip_vector(
+    src: Any,
+    *,
+    bbox: Sequence[float] | None = None,
+    geometry: str | None = None,
+    like: Any = None,
+    crs: str | None = None,
+    layer: None = None,
+    layers: Sequence[str],
+    like_layer: str | None = None,
+    like_where: str | None = None,
+    like_sql: str | None = None,
+) -> VectorDataset: ...
+@overload
+def clip_vector(
+    src: Any,
+    *,
+    bbox: Sequence[float] | None = None,
+    geometry: str | None = None,
+    like: Any = None,
+    crs: str | None = None,
+    layer: None = None,
+    layers: None = None,
+    like_layer: str | None = None,
+    like_where: str | None = None,
+    like_sql: str | None = None,
+) -> Layer | VectorDataset:
+    """Clip vector features to a bbox, polygon or vector/raster template.
+
+    Returns a Layer for one selected layer and a VectorDataset for several (or any `layers=`).
+    """
 
 def check_coverage(
     src: Any,
