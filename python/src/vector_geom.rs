@@ -32,15 +32,8 @@ pub(crate) fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
 
 /// The single layer an operation works on: `src`'s only layer, or the one named `layer`.
 pub(crate) fn one_layer(py: Python<'_>, src: &Bound<'_, PyAny>, layer: Option<String>) -> PyResult<Layer> {
-    let mut layers = input_layers(py, src, layer.clone().map(|l| vec![l]))?;
-    match layers.len() {
-        1 => Ok(layers.remove(0)),
-        0 => Err(invalid(match layer {
-            Some(l) => format!("no layer named '{l}'"),
-            None => "no input layer".to_string(),
-        })),
-        n => Err(invalid(format!("the input has {n} layers: choose one with layer="))),
-    }
+    let layers = input_layers(py, src, layer.clone().map(|l| vec![l]))?;
+    terrio::ops::vector_filter::one_layer(layers, layer.as_deref()).py()
 }
 
 fn run(py: Python<'_>, src: &Bound<'_, PyAny>, layer: Option<String>, op: GeometryOp) -> PyResult<PyLayer> {

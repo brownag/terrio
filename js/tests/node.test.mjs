@@ -2579,6 +2579,25 @@ test("vectorGrid and linear referencing (gdal_grid, ogrlineref)", () => {
   assert.ok(Math.abs(sub.features[0].geometry.coordinates[0][0] - 115) < 1e-9);
 });
 
+test("lineref rejects several layers without a name", () => {
+  const line = { type: "FeatureCollection", features: [{ type: "Feature", properties: {}, geometry: { type: "LineString", coordinates: [[0, 0], [1000, 0], [1000, 1000]] } }] };
+  const stones = {
+    type: "FeatureCollection",
+    features: [[200, 0, 1200], [1000, 200, 2000], [1000, 700, 2500]].map(([x, y, pos]) => ({ type: "Feature", properties: { pos }, geometry: { type: "Point", coordinates: [x, y] } })),
+  };
+  const two = terrio.concat([terrio.fromGeoJSON(line, "lines", "EPSG:3857"), terrio.fromGeoJSON(line, "other", "EPSG:3857")], { mode: "stack" });
+  assert.equal(two.layerNames().length, 2);
+  const stoneLayer = terrio.fromGeoJSON(stones, "stones", "EPSG:3857");
+  assert.throws(() => terrio.linerefCreate(two, stoneLayer, { positionField: "pos", step: 500 }), /choose one with layer/);
+  assert.throws(() => terrio.linerefCreate(two, stoneLayer, { positionField: "pos", step: 500, linesLayer: "missing" }), /no layer named/);
+  const named = terrio.linerefCreate(two, stoneLayer, { positionField: "pos", step: 500, linesLayer: two.layerNames()[0] });
+  assert.equal(named.toGeoJSON().features.length, 4);
+  const twoParts = terrio.concat([named, named], { mode: "stack" });
+  assert.equal(twoParts.layerNames().length, 2);
+  assert.throws(() => terrio.linerefPosition(twoParts, 100, 0), /choose one with layer/);
+  assert.ok(Math.abs(terrio.linerefPosition(twoParts, 100, 0, { layer: twoParts.layerNames()[0] }) - (1000 + 100 / 1.15)) < 1e-9);
+});
+
 test("compare, pixelInfo and xyz", () => {
   const values = Float64Array.from({ length: 20 }, (_, i) => i);
   const a = terrio.rasterFromArray(values, 5, 4, [100, 10, 0, 240, 0, -10], "EPSG:32611");

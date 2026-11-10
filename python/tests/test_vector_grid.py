@@ -226,3 +226,16 @@ def test_rasterize_and_vector_grid_write_tile_size_and_bigtiff(tmp_path, bigtiff
         written = terrio.open_raster(path, lazy=True)
         assert written.block_size == (16, 16), name
         np.testing.assert_array_equal(written.read(1), r.read(1))
+
+def test_lineref_rejects_several_layers_on_a_dataset_without_a_name(tmp_path):
+    # A two-layer dataset follows the same one-layer rule as a path or GeoJSON: no name is an error.
+    lines, stones = lineref_inputs()
+    parts = terrio.lineref_create(lines, stones, "pos", 500)
+    other = terrio.Layer.from_geojson(points_geojson([(0, 0, 1)]), name="other")
+    path = str(tmp_path / "two.gpkg")
+    terrio.write_vector([parts, other], path)
+    dataset = terrio.open_vector(path)
+    assert len(dataset.layers) == 2
+    with pytest.raises(terrio.InvalidArgumentError, match="choose one with layer"):
+        terrio.lineref_position(dataset, 100, 0)
+    assert terrio.lineref_position(dataset, 100, 0, layer="parts") == pytest.approx(1000 + 100 / 1.15)

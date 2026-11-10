@@ -92,13 +92,9 @@ pub fn vector_grid(src: JsValue, options: JsValue) -> Result<Dataset, JsError> {
     Ok(Dataset::from_raster(terrio::ops::vector_grid::vector_grid_from_layers(&all, a.sql.as_deref(), named, &o).map_err(js_err)?))
 }
 
-/// The first layer of a vector source, or the named one.
+/// The one layer of a vector source: the named one, or the only layer. Core owns the policy.
 fn one_layer(src: &JsValue, name: Option<&str>) -> Result<Layer, JsError> {
-    let layers = input_layers(src)?;
-    match name {
-        Some(n) => layers.into_iter().find(|l| l.name == n).ok_or_else(|| invalid(format!("no layer named {n}"))),
-        None => layers.into_iter().next().ok_or_else(|| invalid("no layer")),
-    }
+    terrio::ops::vector_filter::one_layer(input_layers(src)?, name).map_err(js_err)
 }
 
 /// Borrow a Dataset's selected layer during a lookup instead of cloning all parts.
@@ -108,11 +104,9 @@ fn with_one_layer<T>(src: &JsValue, name: Option<&str>, apply: impl FnOnce(&Laye
         let Inner::Vector(layers, _) = &*borrowed else {
             return Err(invalid("expected a vector dataset, got a raster"));
         };
-        let layer = match name {
-            Some(n) => layers.iter().find(|l| l.name == n).ok_or_else(|| invalid(format!("no layer named {n}")))?,
-            None => layers.first().ok_or_else(|| invalid("no layer"))?,
-        };
-        return apply(layer);
+        let names: Vec<&str> = layers.iter().map(|layer| layer.name.as_str()).collect();
+        let index = terrio::ops::vector_filter::one_layer_index(&names, name).map_err(js_err)?;
+        return apply(&layers[index]);
     }
     apply(&one_layer(src, name)?)
 }

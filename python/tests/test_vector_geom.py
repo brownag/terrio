@@ -165,3 +165,11 @@ def test_convert_simplify(tmp_path):
     terrio.convert(str(src), str(dst), simplify=1.0)
     out = json.loads(dst.read_text())["features"]
     assert out[0]["geometry"]["coordinates"] == [[0, 0], [10, 0]]
+
+
+def test_missing_layer_name_is_an_error_on_every_path():
+    # Core owns the rule: a requested name that does not exist is an error on every input path.
+    with pytest.raises(Exception, match="no layer named 'missing'"):
+        terrio.convex_hull(LINES, layer="missing")
+    with pytest.raises(Exception, match="no layer named 'missing'"):
+        terrio.sql(LINES, "SELECT * FROM layer", layers=["missing"])

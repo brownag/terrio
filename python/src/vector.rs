@@ -87,15 +87,9 @@ impl PyVectorDataset {
 
     /// Borrow one selected layer while a read-only binding operation runs.
     pub(crate) fn with_layer<T>(&self, py: Python<'_>, name: Option<&str>, apply: impl FnOnce(&Layer) -> PyResult<T>) -> PyResult<T> {
-        let layer = match name {
-            Some(name) => self
-                .layers
-                .iter()
-                .find(|layer| layer.borrow(py).inner.name == name)
-                .ok_or_else(|| invalid(format!("no layer named {name}")))?,
-            None => self.layers.first().ok_or_else(|| invalid("no layer"))?,
-        };
-        let borrowed = layer.borrow(py);
+        let names: Vec<String> = self.layers.iter().map(|layer| layer.borrow(py).inner.name.clone()).collect();
+        let index = terrio::ops::vector_filter::one_layer_index(&names, name).py()?;
+        let borrowed = self.layers[index].borrow(py);
         apply(&borrowed.inner)
     }
 

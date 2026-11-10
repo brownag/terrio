@@ -1,9 +1,9 @@
 //! Gridding scattered vector points (`terrio vector-grid`, GDAL's `gdal_grid`) and linear
 //! referencing (`terrio lineref`, GDAL's `ogrlineref`).
 
-use crate::ops::{data_type, srs, vector_write_options};
+use crate::ops::{data_type, input_layers, srs, vector_write_options};
 use crate::raster::PyRaster;
-use crate::vector::{PyLayer, PyVectorDataset, layers_from_object};
+use crate::vector::{PyLayer, PyVectorDataset};
 use crate::{Detach, PyResultExt, invalid};
 use pyo3::prelude::*;
 use terrio::ops::lineref::LineRefOptions;
@@ -19,23 +19,6 @@ pub(crate) fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(lineref_coordinates, m)?)?;
     m.add_function(wrap_pyfunction!(lineref_subline, m)?)?;
     Ok(())
-}
-
-/// Opens the layers given to an operation: a path, or layers in memory.
-fn input_layers(py: Python<'_>, src: &Bound<'_, PyAny>, layers: Option<Vec<String>>) -> PyResult<Vec<terrio::Layer>> {
-    match src.extract::<String>() {
-        Ok(path) => {
-            let options = terrio::VectorOpenOptions { layers: layers.unwrap_or_default(), ..Default::default() };
-            py.detach_result(|| terrio::ops::vector_filter::open_layers(&path, &options)).py()
-        }
-        Err(_) => {
-            let all = layers_from_object(src, None, None)?;
-            Ok(match layers {
-                Some(names) => terrio::ops::vector_filter::select_layers(all, &names).py()?,
-                None => all,
-            })
-        }
-    }
 }
 
 /// Grids scattered vector points into a raster, like `terrio vector-grid` (GDAL's
@@ -171,9 +154,10 @@ fn vector_grid(
     Ok(PyRaster::from_dataset(out))
 }
 
-/// The one layer of a source: the named one, or the first.
+/// The one layer of a source: the named one, or the only layer. Core owns the policy and messages.
 fn one_layer(py: Python<'_>, src: &Bound<'_, PyAny>, layer: Option<String>) -> PyResult<terrio::Layer> {
-    input_layers(py, src, layer.map(|l| vec![l]))?.into_iter().next().ok_or_else(|| invalid("no layer"))
+    let layers = input_layers(py, src, layer.clone().map(|l| vec![l]))?;
+    terrio::ops::vector_filter::one_layer(layers, layer.as_deref()).py()
 }
 
 /// Borrow an in-memory layer for lookups; paths and serialized inputs are opened once.

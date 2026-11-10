@@ -709,7 +709,7 @@ pub(crate) fn input_layers(py: Python<'_>, src: &Bound<'_, PyAny>, layers: Optio
     match src.extract::<String>() {
         Ok(path) => {
             let options = VectorOpenOptions { layers: layers.unwrap_or_default(), ..Default::default() };
-            Ok(py.detach_result(|| terrio::open_vector(&path, &options)).py()?.into_resolved_layers())
+            py.detach_result(|| terrio::ops::vector_filter::open_layers(&path, &options)).py()
         }
         Err(_) => {
             let all = layers_from_object(src, None, None)?;

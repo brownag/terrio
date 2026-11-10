@@ -27,15 +27,22 @@ pub fn select_layers(layers: Vec<Layer>, names: &[String]) -> Result<Vec<Layer>>
 /// With `name`, the layer with that name is returned. Without it, the input must hold exactly one
 /// layer.
 pub fn one_layer(layers: Vec<Layer>, name: Option<&str>) -> Result<Layer> {
+    let names: Vec<&str> = layers.iter().map(|layer| layer.name.as_str()).collect();
+    let index = one_layer_index(&names, name)?;
+    Ok(layers.into_iter().nth(index).expect("index is in range"))
+}
+
+/// The position of the one layer [`one_layer`] selects, for bindings that borrow their layers.
+pub fn one_layer_index<S: AsRef<str>>(names: &[S], name: Option<&str>) -> Result<usize> {
     if let Some(name) = name {
-        return layers
-            .into_iter()
-            .find(|layer| layer.name == name)
+        return names
+            .iter()
+            .position(|layer| layer.as_ref() == name)
             .ok_or_else(|| Error::InvalidArgument(format!("no layer named '{name}'")));
     }
-    match layers.len() {
+    match names.len() {
         0 => Err(Error::InvalidArgument("no input layer".into())),
-        1 => Ok(layers.into_iter().next().expect("one layer")),
+        1 => Ok(0),
         n => Err(Error::InvalidArgument(format!("the input has {n} layers: choose one with layer"))),
     }
 }
@@ -777,6 +784,16 @@ mod tests {
     #[test]
     fn one_layer_returns_the_only_layer() {
         assert_eq!(one_layer(vec![Layer::new("only")], None).unwrap().name, "only");
+    }
+
+    #[test]
+    fn one_layer_index_matches_one_layer() {
+        let names = ["a", "b"];
+        assert_eq!(one_layer_index(&names, Some("b")).unwrap(), 1);
+        assert!(one_layer_index(&names, Some("missing")).unwrap_err().to_string().contains("no layer named 'missing'"));
+        assert!(one_layer_index(&names, None).unwrap_err().to_string().contains("the input has 2 layers"));
+        assert_eq!(one_layer_index(&["only"], None).unwrap(), 0);
+        assert!(one_layer_index::<&str>(&[], None).unwrap_err().to_string().contains("no input layer"));
     }
 
     #[cfg(feature = "sqlite")]
