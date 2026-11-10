@@ -32,13 +32,19 @@ pub fn one_layer(layers: Vec<Layer>, name: Option<&str>) -> Result<Layer> {
     Ok(layers.into_iter().nth(index).expect("index is in range"))
 }
 
+/// The one diagnostic for a requested layer name that no available layer answers to. Every
+/// surface and reader uses this text; callers add their own context around it.
+pub fn no_layer_named(missing: &str, available: &[&str]) -> Error {
+    Error::InvalidArgument(format!("no layer named {missing} (layers: {})", available.join(", ")))
+}
+
 /// The position of the one layer [`one_layer`] selects, for bindings that borrow their layers.
 pub fn one_layer_index<S: AsRef<str>>(names: &[S], name: Option<&str>) -> Result<usize> {
     if let Some(name) = name {
-        return names
-            .iter()
-            .position(|layer| layer.as_ref() == name)
-            .ok_or_else(|| Error::InvalidArgument(format!("no layer named '{name}'")));
+        return names.iter().position(|layer| layer.as_ref() == name).ok_or_else(|| {
+            let available: Vec<&str> = names.iter().map(|layer| layer.as_ref()).collect();
+            no_layer_named(name, &available)
+        });
     }
     match names.len() {
         0 => Err(Error::InvalidArgument("no input layer".into())),
@@ -771,7 +777,7 @@ mod tests {
         let layers = vec![Layer::new("a"), Layer::new("b")];
         assert_eq!(one_layer(layers.clone(), Some("b")).unwrap().name, "b");
         let err = one_layer(layers, Some("missing")).unwrap_err();
-        assert!(err.to_string().contains("no layer named 'missing'"), "{err}");
+        assert!(err.to_string().contains("no layer named missing (layers: a, b)"), "{err}");
     }
 
     #[test]
@@ -790,7 +796,7 @@ mod tests {
     fn one_layer_index_matches_one_layer() {
         let names = ["a", "b"];
         assert_eq!(one_layer_index(&names, Some("b")).unwrap(), 1);
-        assert!(one_layer_index(&names, Some("missing")).unwrap_err().to_string().contains("no layer named 'missing'"));
+        assert!(one_layer_index(&names, Some("missing")).unwrap_err().to_string().contains("no layer named missing (layers: a, b)"));
         assert!(one_layer_index(&names, None).unwrap_err().to_string().contains("the input has 2 layers"));
         assert_eq!(one_layer_index(&["only"], None).unwrap(), 0);
         assert!(one_layer_index::<&str>(&[], None).unwrap_err().to_string().contains("no input layer"));

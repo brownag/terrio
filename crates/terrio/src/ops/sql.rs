@@ -48,7 +48,8 @@ pub fn query(layers: &[Layer], statement: &str) -> Result<Layer> {
     let mut select = Select::parse(statement)?;
     select.strict_output_names = true;
     if !layers.iter().any(|l| l.name.eq_ignore_ascii_case(&select.from)) {
-        return Err(Error::InvalidArgument(format!("SQL: no layer named '{}'", select.from)));
+        let available: Vec<&str> = layers.iter().map(|l| l.name.as_str()).collect();
+        return Err(Error::InvalidArgument(format!("SQL: {}", crate::ops::vector_filter::no_layer_named(&select.from, &available))));
     }
     let (layer, _) = super::vector_filter::run_select(layers, &select, select.limit)?;
     Ok(layer)

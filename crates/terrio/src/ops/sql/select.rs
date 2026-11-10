@@ -246,12 +246,18 @@ impl JoinPlan<'_> {
     }
 }
 
+/// The message for a source or join name that no layer answers to.
+fn missing_layer(name: &str, layers: &[Layer]) -> String {
+    let available: Vec<&str> = layers.iter().map(|l| l.name.as_str()).collect();
+    crate::ops::vector_filter::no_layer_named(name, &available).to_string()
+}
+
 pub(crate) fn execute(layers: &[Layer], s: &Select, copy_limit: Option<usize>) -> Result<(Layer, Option<usize>)> {
     let layer = layers
         .iter()
         .find(|l| l.name.eq_ignore_ascii_case(&s.from))
         .or_else(|| (layers.len() == 1).then(|| &layers[0]))
-        .ok_or_else(|| syntax(format!("no layer named '{}'", s.from)))?;
+        .ok_or_else(|| syntax(missing_layer(&s.from, layers)))?;
     let mut s = s.clone();
     s.source_epsg = layer.crs_epsg();
     let s = &s;
@@ -263,10 +269,8 @@ pub(crate) fn execute(layers: &[Layer], s: &Select, copy_limit: Option<usize>) -
     let mut joins = Vec::new();
     let mut qualifiers = vec![s.alias.as_deref().unwrap_or(&s.from).to_ascii_lowercase()];
     for join in &s.joins {
-        let rhs = layers
-            .iter()
-            .find(|l| l.name.eq_ignore_ascii_case(&join.layer))
-            .ok_or_else(|| syntax(format!("no layer named '{}'", join.layer)))?;
+        let rhs =
+            layers.iter().find(|l| l.name.eq_ignore_ascii_case(&join.layer)).ok_or_else(|| syntax(missing_layer(&join.layer, layers)))?;
         let qualifier = join.alias.as_deref().unwrap_or(&join.layer);
         if qualifiers.contains(&qualifier.to_ascii_lowercase()) {
             return Err(syntax("table aliases must be unique".into()));

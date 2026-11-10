@@ -629,7 +629,8 @@ pub(crate) mod codec {
         let layers = crate::dataset::select_layers(layers, name, options)?;
         // A source without layers is refused, as before names were checked one by one.
         if layers.is_empty() {
-            return Err(Error::InvalidArgument(format!("no layer named {} (layers: {})", options.layers.join(", "), names.join(", "))));
+            let available: Vec<&str> = names.iter().map(String::as_str).collect();
+            return Err(crate::ops::vector_filter::no_layer_named(&options.layers.join(", "), &available));
         }
         Ok(Dataset::Vector(VectorDataset::new(layers, driver)))
     }

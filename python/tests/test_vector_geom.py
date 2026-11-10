@@ -169,7 +169,7 @@ def test_convert_simplify(tmp_path):
 
 def test_missing_layer_name_is_an_error_on_every_path():
     # Core owns the rule: a requested name that does not exist is an error on every input path.
-    with pytest.raises(Exception, match="no layer named '?missing'?"):
+    with pytest.raises(Exception, match=r"no layer named missing \(layers: "):
         terrio.convex_hull(LINES, layer="missing")
-    with pytest.raises(Exception, match="no layer named '?missing'?"):
+    with pytest.raises(Exception, match=r"no layer named missing \(layers: "):
         terrio.sql(LINES, "SELECT * FROM layer", layers=["missing"])

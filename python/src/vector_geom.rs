@@ -303,12 +303,7 @@ fn clip_vector(
     } else {
         input_layers(py, src, selected.clone())?
     };
-    if inputs.is_empty() {
-        return Err(invalid("clip_vector needs an input layer"));
-    }
-    let clipped = py
-        .detach_result(|| inputs.iter().map(|input| terrio::ops::vector_clip::clip(input, &region)).collect::<terrio::Result<Vec<_>>>())
-        .py()?;
+    let clipped = py.detach_result(|| terrio::ops::vector_clip::clip_all(&inputs, &region)).py()?;
     if let ([single], None) = (clipped.as_slice(), &layers) {
         return Ok(Py::new(py, PyLayer::from(single.clone()))?.into_any());
     }

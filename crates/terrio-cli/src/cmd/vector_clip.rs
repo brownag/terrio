@@ -65,6 +65,6 @@ pub fn run(a: Args) -> Result<()> {
         &a.input.input,
         &terrio::VectorOpenOptions { layers: a.input.layers, ..Default::default() },
     )?;
-    let layers = input.iter().map(|l| terrio::ops::vector_clip::clip(l, &region)).collect::<Result<Vec<_>>>()?;
+    let layers = terrio::ops::vector_clip::clip_all(&input, &region)?;
     a.output.write(layers)
 }

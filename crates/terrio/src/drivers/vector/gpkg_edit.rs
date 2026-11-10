@@ -125,11 +125,10 @@ pub(crate) fn layer_names(d: &Database) -> Vec<String> {
 /// The layer named `name` (ignoring case), as the file spells it.
 fn find_layer(d: &Database, name: &str) -> Result<String> {
     let names = layer_names(d);
-    names
-        .iter()
-        .find(|n| eq(n, name))
-        .cloned()
-        .ok_or_else(|| Error::InvalidArgument(format!("no layer named '{name}' (layers: {})", names.join(", "))))
+    names.iter().find(|n| eq(n, name)).cloned().ok_or_else(|| {
+        let available: Vec<&str> = names.iter().map(String::as_str).collect();
+        crate::ops::vector_filter::no_layer_named(name, &available)
+    })
 }
 
 /// Sets `column` to `new` in the rows of `table` where it is `old` (ignoring case).

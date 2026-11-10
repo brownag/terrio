@@ -55,7 +55,7 @@ pub fn clip_vector(src: JsValue, options: JsValue) -> Result<Dataset, JsError> {
     };
     let region = spec.region().map_err(js_err)?;
     let layers = selected_input_layers(&src, args.layers.as_deref().unwrap_or_default())?;
-    let out = layers.iter().map(|l| terrio::ops::vector_clip::clip(l, &region)).collect::<terrio::Result<Vec<_>>>().map_err(js_err)?;
+    let out = terrio::ops::vector_clip::clip_all(&layers, &region).map_err(js_err)?;
     Ok(Dataset::from_layers(out, VectorDriver::GeoJSON))
 }
 

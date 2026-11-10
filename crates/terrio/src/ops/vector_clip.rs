@@ -323,6 +323,15 @@ pub fn clip(layer: &Layer, region: &ClipRegion) -> Result<Layer> {
     Ok(out)
 }
 
+/// Clips every input layer to the region, in order. Every surface clips its selected layers
+/// through this function, so an empty selection is the same error everywhere.
+pub fn clip_all(inputs: &[Layer], region: &ClipRegion) -> Result<Vec<Layer>> {
+    if inputs.is_empty() {
+        return Err(Error::InvalidArgument("no input layer".into()));
+    }
+    inputs.iter().map(|input| clip(input, region)).collect()
+}
+
 pub(super) struct Mask {
     area: geo::MultiPolygon<f64>,
     bounds: Option<geo::Rect<f64>>,
@@ -938,5 +947,20 @@ mod tests {
         assert!(err.to_string().contains("crs applies only to bbox/geometry"), "{err}");
         assert!(validate_region_args(true, false, false, true, false).is_ok());
         assert!(validate_region_args(false, true, false, true, false).is_ok());
+    }
+
+    #[test]
+    fn clip_all_refuses_an_empty_selection() {
+        let err = clip_all(&[], &bbox()).unwrap_err();
+        assert!(err.to_string().contains("no input layer"), "{err}");
+    }
+
+    #[test]
+    fn clip_all_clips_each_layer_in_order() {
+        let inputs = [layer("POINT (1 1)", None), layer("POINT (5 5)", None)];
+        let out = clip_all(&inputs, &bbox()).unwrap();
+        assert_eq!(out.len(), 2);
+        assert_eq!(out[0].features.len(), 1);
+        assert_eq!(out[1].features.len(), 0);
     }
 }

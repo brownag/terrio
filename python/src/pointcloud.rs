@@ -1910,9 +1910,15 @@ fn raster_arg(py: Python<'_>, v: &Bound<'_, PyAny>) -> PyResult<terrio::RasterDa
 /// A vector layer given as a path (its layer `layer`, or the first), a `Layer` or a
 /// `VectorDataset` (its layer `layer`, or the first).
 fn layer_arg(py: Python<'_>, v: &Bound<'_, PyAny>, layer: Option<String>) -> PyResult<terrio::Layer> {
-    let pick = |layers: Vec<terrio::Layer>| -> PyResult<terrio::Layer> {
+    let pick = |mut layers: Vec<terrio::Layer>| -> PyResult<terrio::Layer> {
         match &layer {
-            Some(name) => layers.into_iter().find(|l| &l.name == name).ok_or_else(|| invalid(format!("no layer named '{name}'"))),
+            Some(name) => {
+                let index = layers.iter().position(|l| &l.name == name).ok_or_else(|| {
+                    let available: Vec<&str> = layers.iter().map(|l| l.name.as_str()).collect();
+                    invalid(terrio::ops::vector_filter::no_layer_named(name, &available).to_string())
+                })?;
+                Ok(layers.swap_remove(index))
+            }
             None => layers.into_iter().next().ok_or_else(|| invalid("the dataset has no layer")),
         }
     };

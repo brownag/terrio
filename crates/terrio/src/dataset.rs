@@ -16,6 +16,7 @@
 
 use crate::crs::SpatialRef;
 use crate::formats::{RasterDriver, VectorDriver, extension};
+use crate::ops::vector_filter::no_layer_named;
 use crate::vfs;
 use crate::{Error, Result};
 use std::path::Path;
@@ -1372,7 +1373,7 @@ pub(crate) fn layer_selection(requested: &[String], available: &[&str], path: Op
         layer == name || (ignore_case && layer.eq_ignore_ascii_case(name)) || (available.len() == 1 && stem == Some(name))
     };
     if let Some(missing) = requested.iter().find(|n| !available.iter().any(|l| matches(l, n))) {
-        return Err(Error::InvalidArgument(format!("no layer named {missing} (layers: {})", available.join(", "))));
+        return Err(no_layer_named(missing, available));
     }
     Ok(available.iter().map(|l| requested.is_empty() || requested.iter().any(|n| matches(l, n))).collect())
 }

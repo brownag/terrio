@@ -722,9 +722,10 @@ pub(crate) fn key_of_field(v: &wbvector::FieldValue) -> Option<KeyValue> {
 /// The layer of `layers` named `name`, or the only one.
 fn pick<'a>(layers: &'a [Layer], name: Option<&str>, what: &str) -> Result<&'a Layer> {
     match name {
-        Some(n) => {
-            layers.iter().find(|l| l.name == n).ok_or_else(|| Error::InvalidArgument(format!("no layer named '{n}' in {what} dataset")))
-        }
+        Some(n) => layers.iter().find(|l| l.name == n).ok_or_else(|| {
+            let available: Vec<&str> = layers.iter().map(|l| l.name.as_str()).collect();
+            Error::InvalidArgument(format!("{} in {what} dataset", crate::ops::vector_filter::no_layer_named(n, &available)))
+        }),
         None if layers.len() == 1 => Ok(&layers[0]),
         None => Err(Error::InvalidArgument(format!("the {what} dataset has {} layers: name the {what} layer", layers.len()))),
     }
