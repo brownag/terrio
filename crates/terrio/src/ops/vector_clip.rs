@@ -180,6 +180,83 @@ impl ClipRegion {
     }
 }
 
+/// WHERE and SQL filters are exclusive. Shared by every vector template source.
+fn check_template_filters(options: &ClipTemplateOptions) -> Result<()> {
+    if options.where_clause.is_some() && options.sql.is_some() {
+        return Err(Error::InvalidArgument("like_where and like_sql are mutually exclusive".into()));
+    }
+    Ok(())
+}
+
+/// How a clipping template arrives. Each binding maps its input onto one of these.
+#[derive(Debug, Clone)]
+pub enum TemplateSource {
+    /// A file or dataset path, read with its driver. Native targets only.
+    Path(String),
+    /// An opened raster. Only its bounds are used.
+    Raster(Box<RasterDataset>),
+    /// Vector layers already in memory.
+    Layers(Vec<Layer>),
+}
+
+/// A clipping region as the caller specified it, before any template is read.
+///
+/// [`ClipSpec::region`] is the one place where the region rules are enforced. A template has
+/// no CRS: the template's own CRS is used, so `crs` applies only to `Bbox` and `Geometry`.
+#[derive(Debug, Clone)]
+pub enum ClipSpec {
+    /// Axis-aligned rectangle, `[xmin, ymin, xmax, ymax]`.
+    Bbox {
+        /// The rectangle bounds.
+        bounds: [f64; 4],
+        /// CRS of the bounds; `None` means the input layer's CRS.
+        crs: Option<SpatialRef>,
+    },
+    /// Polygon as WKT or GeoJSON text.
+    Geometry {
+        /// WKT or GeoJSON text of one polygonal feature.
+        text: String,
+        /// CRS of the text; GeoJSON defaults to EPSG:4326 when `None`.
+        crs: Option<SpatialRef>,
+    },
+    /// Polygons read from a template, optionally filtered by layer, WHERE or SQL.
+    Template {
+        /// Where the template is read from.
+        source: TemplateSource,
+        /// Layer selection and attribute or SQL filter.
+        options: ClipTemplateOptions,
+    },
+}
+
+impl ClipSpec {
+    /// Builds the clipping region, checking the rules shared by every surface.
+    pub fn region(self) -> Result<ClipRegion> {
+        match self {
+            Self::Bbox { bounds, crs } => ClipRegion::bbox(bounds, crs),
+            Self::Geometry { text, crs } => ClipRegion::parse(&text, crs),
+            Self::Template { source, options } => match source {
+                TemplateSource::Raster(raster) => {
+                    if options.layer.is_some() || options.where_clause.is_some() || options.sql.is_some() {
+                        return Err(Error::InvalidArgument("like_layer/where/sql require a vector template".into()));
+                    }
+                    ClipRegion::from_raster(&raster)
+                }
+                TemplateSource::Path(path) => {
+                    check_template_filters(&options)?;
+                    #[cfg(not(target_family = "wasm"))]
+                    return ClipRegion::from_path(&path, &options);
+                    #[cfg(target_family = "wasm")]
+                    Err(Error::InvalidArgument("template paths are unavailable in WebAssembly; pass a Raster or vector data".into()))
+                }
+                TemplateSource::Layers(layers) => {
+                    check_template_filters(&options)?;
+                    ClipRegion::from_layers(&layers, &options)
+                }
+            },
+        }
+    }
+}
+
 /// Clips features to a region, preserving attributes, schema, layer name and CRS.
 /// Null/empty results are omitted. Single-type layers split multipart results and
 /// omit lower-dimensional contacts; multi-type layers retain their declared type.
@@ -606,6 +683,54 @@ mod tests {
     }
     fn bbox() -> ClipRegion {
         ClipRegion::bbox([0., 0., 2., 2.], None).unwrap()
+    }
+    #[test]
+    fn clip_spec_rejects_where_with_sql() {
+        let spec = ClipSpec::Template {
+            source: TemplateSource::Layers(vec![layer("POLYGON ((0 0,2 0,2 2,0 2,0 0))", None)]),
+            options: ClipTemplateOptions {
+                where_clause: Some("id = 5".into()),
+                sql: Some("SELECT * FROM source".into()),
+                ..Default::default()
+            },
+        };
+        let err = spec.region().unwrap_err();
+        assert!(err.to_string().contains("mutually exclusive"), "{err}");
+    }
+    #[test]
+    fn clip_spec_dispatches_bbox_and_geometry() {
+        let bbox_spec = ClipSpec::Bbox { bounds: [0., 0., 2., 2.], crs: None }.region().unwrap();
+        assert_eq!(bbox_spec.geometry, bbox().geometry);
+        assert!(ClipSpec::Bbox { bounds: [2., 0., 0., 2.], crs: None }.region().is_err());
+        let geometry = ClipSpec::Geometry { text: "POLYGON ((0 0,2 0,2 2,0 2,0 0))".into(), crs: None }.region().unwrap();
+        assert!(matches!(geometry.geometry, Geometry::Polygon { .. }));
+        assert!(geometry.crs.is_none());
+        let from_layers = ClipSpec::Template {
+            source: TemplateSource::Layers(vec![layer("POLYGON ((0 0,2 0,2 2,0 2,0 0))", None)]),
+            options: ClipTemplateOptions::default(),
+        }
+        .region()
+        .unwrap();
+        assert!(matches!(from_layers.geometry, Geometry::Polygon { .. } | Geometry::MultiPolygon(_)));
+    }
+    #[test]
+    fn clip_spec_rejects_template_options_on_raster() {
+        let grid = super::super::Grid { width: 2, height: 2, geo_transform: [0., 1., 0., 2., 0., -1.] };
+        let raster = super::super::build_raster(
+            grid,
+            vec![vec![0.0; 4]],
+            wbraster::DataType::F32,
+            None,
+            &crate::crs::SpatialRef::from_epsg(32611).unwrap(),
+            |v, _| v,
+        )
+        .unwrap();
+        let spec = ClipSpec::Template {
+            source: TemplateSource::Raster(Box::new(raster)),
+            options: ClipTemplateOptions { layer: Some("source".into()), ..Default::default() },
+        };
+        let err = spec.region().unwrap_err();
+        assert!(err.to_string().contains("require a vector template"), "{err}");
     }
     #[test]
     fn collapsed_restored_exteriors_and_holes_are_errors() {

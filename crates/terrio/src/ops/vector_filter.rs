@@ -21,6 +21,25 @@ pub fn select_layers(layers: Vec<Layer>, names: &[String]) -> Result<Vec<Layer>>
     Ok(layers.into_iter().zip(selected).filter_map(|(layer, keep)| keep.then_some(layer)).collect())
 }
 
+/// The one layer an operation works on, chosen by name or implied by a single-layer input.
+///
+/// Every binding uses this policy, so the rule and its messages are the same on every surface.
+/// With `name`, the layer with that name is returned. Without it, the input must hold exactly one
+/// layer.
+pub fn one_layer(layers: Vec<Layer>, name: Option<&str>) -> Result<Layer> {
+    if let Some(name) = name {
+        return layers
+            .into_iter()
+            .find(|layer| layer.name == name)
+            .ok_or_else(|| Error::InvalidArgument(format!("no layer named '{name}'")));
+    }
+    match layers.len() {
+        0 => Err(Error::InvalidArgument("no input layer".into())),
+        1 => Ok(layers.into_iter().next().expect("one layer")),
+        n => Err(Error::InvalidArgument(format!("the input has {n} layers: choose one with layer"))),
+    }
+}
+
 /// Opens selected operation inputs and resolves their styles. Readers validate against the
 /// complete source inventory, including the file-stem alias for a single layer.
 pub fn open_layers(path: &str, options: &crate::VectorOpenOptions) -> Result<Vec<Layer>> {
@@ -738,6 +757,26 @@ mod tests {
         let layers = vec![Layer::new("a"), Layer::new("b")];
         assert_eq!(select_layers(layers.clone(), &["b".into()]).unwrap()[0].name, "b");
         assert!(select_layers(layers, &["a".into(), "missing".into()]).unwrap_err().to_string().contains("missing"));
+    }
+
+    #[test]
+    fn one_layer_errors_on_missing_name() {
+        let layers = vec![Layer::new("a"), Layer::new("b")];
+        assert_eq!(one_layer(layers.clone(), Some("b")).unwrap().name, "b");
+        let err = one_layer(layers, Some("missing")).unwrap_err();
+        assert!(err.to_string().contains("no layer named 'missing'"), "{err}");
+    }
+
+    #[test]
+    fn one_layer_errors_on_several_without_name() {
+        let err = one_layer(vec![Layer::new("a"), Layer::new("b")], None).unwrap_err();
+        assert!(err.to_string().contains("the input has 2 layers: choose one with layer"), "{err}");
+        assert!(one_layer(vec![], None).unwrap_err().to_string().contains("no input layer"));
+    }
+
+    #[test]
+    fn one_layer_returns_the_only_layer() {
+        assert_eq!(one_layer(vec![Layer::new("only")], None).unwrap().name, "only");
     }
 
     #[cfg(feature = "sqlite")]

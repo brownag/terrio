@@ -43,7 +43,25 @@ impl ViewshedMode {
             _ => Err(Error::InvalidArgument("viewshed mode must be NORMAL, DEM, GROUND or ACCUM".into())),
         }
     }
+
+    /// Whether the mode needs an observer position. Cumulative places its own observers.
+    pub fn requires_observer(self) -> bool {
+        self != Self::Cumulative
+    }
 }
+
+/// Default observer height above the DEM, in DEM units.
+pub const DEFAULT_OBSERVER_HEIGHT: f64 = 2.0;
+/// Default target height above the DEM, in DEM units (NORMAL mode only).
+pub const DEFAULT_TARGET_HEIGHT: f64 = 0.0;
+/// Default maximum distance, in projected CRS units; zero means unlimited.
+pub const DEFAULT_MAX_DISTANCE: f64 = 0.0;
+/// Default source band, from 1.
+pub const DEFAULT_BAND: usize = 1;
+/// Default output value outside the maximum distance.
+pub const DEFAULT_OUT_OF_RANGE: u8 = 0;
+/// Default ACCUM observer spacing, in pixels.
+pub const DEFAULT_OBSERVER_SPACING: usize = 10;
 
 /// Options for [`viewshed`]. Heights use DEM units and distances use projected CRS units.
 #[derive(Debug, Clone)]
@@ -71,19 +89,42 @@ pub struct ViewshedOptions {
     /// Observer spacing in pixels for ACCUM (default 10). Must be positive.
     pub observer_spacing: usize,
 }
+impl ViewshedOptions {
+    /// Applies the observer rule shared by every binding, and returns the checked options.
+    ///
+    /// `observer` is the `(x, y)` pair, or `None` when the caller omitted it. A mode that needs
+    /// an observer rejects `None`. ACCUM accepts `None` and uses `(0, 0)`, since it places its
+    /// own observers.
+    pub fn checked(mut self, observer: Option<(f64, f64)>) -> Result<Self> {
+        match observer {
+            Some((x, y)) => {
+                self.observer_x = x;
+                self.observer_y = y;
+            }
+            None if self.mode.requires_observer() => {
+                return Err(Error::InvalidArgument("--ox and --oy are required except in ACCUM mode".into()));
+            }
+            None => {
+                self.observer_x = 0.0;
+                self.observer_y = 0.0;
+            }
+        }
+        Ok(self)
+    }
+}
 impl Default for ViewshedOptions {
     fn default() -> Self {
         Self {
-            band: 1,
+            band: DEFAULT_BAND,
             observer_x: 0.0,
             observer_y: 0.0,
-            observer_height: 2.0,
-            target_height: 0.0,
-            max_distance: 0.0,
+            observer_height: DEFAULT_OBSERVER_HEIGHT,
+            target_height: DEFAULT_TARGET_HEIGHT,
+            max_distance: DEFAULT_MAX_DISTANCE,
             curvature_coefficient: None,
             mode: ViewshedMode::Normal,
-            out_of_range: 0,
-            observer_spacing: 10,
+            out_of_range: DEFAULT_OUT_OF_RANGE,
+            observer_spacing: DEFAULT_OBSERVER_SPACING,
         }
     }
 }
@@ -390,5 +431,37 @@ mod tests {
         }
         let flat = viewshed(&src, &ViewshedOptions { curvature_coefficient: Some(0.0), ..o }).unwrap();
         assert!(super::super::band_f64(&flat.raster, 0).iter().all(|v| *v == 255.0));
+    }
+    #[test]
+    fn viewshed_defaults_match_documented_constants() {
+        let o = ViewshedOptions::default();
+        assert_eq!(o.band, DEFAULT_BAND);
+        assert_eq!(o.observer_height, DEFAULT_OBSERVER_HEIGHT);
+        assert_eq!(o.target_height, DEFAULT_TARGET_HEIGHT);
+        assert_eq!(o.max_distance, DEFAULT_MAX_DISTANCE);
+        assert_eq!(o.out_of_range, DEFAULT_OUT_OF_RANGE);
+        assert_eq!(o.observer_spacing, DEFAULT_OBSERVER_SPACING);
+        assert_eq!((o.observer_height, o.target_height, o.max_distance), (2.0, 0.0, 0.0));
+        assert_eq!((o.band, o.out_of_range, o.observer_spacing), (1, 0, 10));
+    }
+    #[test]
+    fn checked_requires_observer_outside_accum() {
+        let normal = ViewshedOptions::default();
+        let err = normal.clone().checked(None).unwrap_err();
+        assert!(err.to_string().contains("--ox and --oy are required except in ACCUM mode"), "{err}");
+        let set = normal.checked(Some((3.5, -2.0))).unwrap();
+        assert_eq!((set.observer_x, set.observer_y), (3.5, -2.0));
+        assert!(ViewshedOptions { mode: ViewshedMode::Dem, ..Default::default() }.checked(None).is_err());
+        assert!(ViewshedOptions { mode: ViewshedMode::Ground, ..Default::default() }.checked(None).is_err());
+    }
+    #[test]
+    fn checked_accepts_missing_observer_in_accum() {
+        let accum = ViewshedOptions { mode: ViewshedMode::Cumulative, observer_x: 9.0, observer_y: 9.0, ..Default::default() };
+        let checked = accum.checked(None).unwrap();
+        assert_eq!((checked.observer_x, checked.observer_y), (0.0, 0.0));
+        let given = ViewshedOptions { mode: ViewshedMode::Cumulative, ..Default::default() }.checked(Some((4.0, 5.0))).unwrap();
+        assert_eq!((given.observer_x, given.observer_y), (4.0, 5.0));
+        assert!(!ViewshedMode::Cumulative.requires_observer());
+        assert!(ViewshedMode::Normal.requires_observer());
     }
 }
